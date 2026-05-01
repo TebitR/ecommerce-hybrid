@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import lifespan
 from app.config import get_settings, Settings
-from app.routers import catalog, cart
+from app.routers import catalog, cart, search
 
 
 # Factory d'application (pour tests + prod)
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     # Enregistrement des routers
     app.include_router(catalog.router, prefix="/api/v2")
     app.include_router(cart.router, prefix="/api/v2")
+    app.include_router(search.router, prefix="/api/v2")
 
     # Healthcheck endpoint
     @app.get("/health")
