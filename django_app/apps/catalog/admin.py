@@ -21,7 +21,7 @@ class ProductAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
     # Actions bulk
-    actions = ["mark_active", "mark_inactive"]
+    actions = ["mark_active", "mark_inactive", "sync_to_mongo"]
 
     def mark_active(self, request, queryset):
         queryset.update(is_active=True)
@@ -32,3 +32,14 @@ class ProductAdmin(admin.ModelAdmin):
         queryset.update(is_active=False)
         self.message_user(request, f"{queryset.count()} produit(s) désactivé(s).")
     mark_inactive.short_description = "Désactiver les produits sélectionnés"
+
+    def sync_to_mongo(self, request, queryset):
+        from .tasks import sync_product_to_mongo
+
+        count = 0
+        for product in queryset:
+            sync_product_to_mongo.delay(product.id)
+            count += 1
+        self.message_user(request, f"{count} produit(s) envoyés en synchro MongoDB.")
+
+    sync_to_mongo.short_description = "Forcer la synchronisation vers MongoDB"

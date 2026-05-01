@@ -16,10 +16,11 @@ services:
     networks:
       - ecommerce_network
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -U ecommerce_user -d ecommerce_db']
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   mongodb:
     image: mongo:7
@@ -36,10 +37,11 @@ services:
     networks:
       - ecommerce_network
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")', '--username', 'admin', '--password', 'MongoPass123', '--authenticationDatabase', 'admin']
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 5
+      start_period: 40s
 
   redis:
     image: redis:7-alpine
@@ -57,6 +59,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   django:
     build:
@@ -91,12 +94,16 @@ services:
       dockerfile: Dockerfile
     container_name: ecommerce_fastapi
     restart: unless-stopped
-    env_file: .env
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 4
     volumes:
       - ./fastapi_app:/app
     ports:
       - '8001:8001'
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGO_DB_NAME=${MONGO_DB_NAME}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
     networks:
       - ecommerce_network
     depends_on:

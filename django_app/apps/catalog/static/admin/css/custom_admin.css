@@ -1,0 +1,98 @@
+:root {
+    --primary: #2563eb;
+    --primary-fg: #ffffff;
+    --body-bg: #f3f4f6;
+    --body-fg: #111827;
+    --header-bg: #111827;
+    --header-color: #f9fafb;
+    --link-fg: #1d4ed8;
+    --link-hover-color: #1e40af;
+}
+
+body {
+    background: var(--body-bg);
+    color: var(--body-fg);
+    font-size: 15px;
+}
+
+#header {
+    background: var(--header-bg);
+    color: var(--header-color);
+}
+
+#branding h1 a,
+#user-tools,
+#user-tools a {
+    color: var(--header-color);
+}
+
+#content {
+    max-width: 1400px;
+}
+
+.module,
+#changelist-form,
+.inline-group,
+.dashboard #content-main .module {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+div.breadcrumbs {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+div.breadcrumbs a {
+    color: #1f2937;
+}
+
+a:link,
+a:visited {
+    color: var(--link-fg);
+}
+
+a:hover {
+    color: var(--link-hover-color);
+}
+
+table#result_list thead th,
+.module h2,
+.module caption,
+.inline-group h2 {
+    background: #eff6ff;
+    color: #111827;
+}
+
+table#result_list tbody tr:nth-child(even) {
+    background: #f9fafb;
+}
+
+input,
+textarea,
+select,
+.vTextField {
+    border-radius: 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 8px 10px !important;
+}
+
+.button,
+input[type="submit"],
+input[type="button"],
+.submit-row input,
+a.button {
+    background: var(--primary) !important;
+    color: var(--primary-fg) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 9px 14px !important;
+}
+
+.button.default,
+input[type="submit"].default,
+.submit-row input.default {
+    background: #1d4ed8 !important;
+}
