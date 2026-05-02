@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import CheckoutValidateSerializer, CheckoutCreateSerializer
+from .tasks import send_order_confirmation
 
 
 class CheckoutValidateView(APIView):
@@ -20,6 +21,7 @@ class CheckoutCreateView(APIView):
 
         try:
             order = serializer.save()
+            send_order_confirmation.delay(order.id)
             return Response({
                 "order_id": order.id,
                 "order_number": order.order_number,

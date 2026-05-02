@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Helvetica, sans-serif; font-size: 12px; color: #333; }
+    .header { text-align: right; border-bottom: 2px solid #16a34a; padding-bottom: 10px; margin-bottom: 20px; }
+    .logo { color: #003366; font-size: 24px; font-weight: bold; float: left; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th { background: #f1f3f5; padding: 8px; text-align: left; border-bottom: 2px solid #ddd; }
+    td { padding: 8px; border-bottom: 1px solid #eee; }
+    .total { text-align: right; font-size: 16px; font-weight: bold; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">E-Shop PRO</div>
+    <div style="clear:both; padding-top:10px;">
+      Facture #{{ order.order_number }}<br>
+      Date: {{ order.created_at|date:"d/m/Y" }}
+    </div>
+  </div>
+  <h3>Client</h3>
+  <p>{{ order.user.get_full_name|default:order.user.username }}<br>{{ order.user.email }}</p>
+
+  <table>
+    <thead><tr><th>Produit</th><th>Qté</th><th>Prix Unit.</th><th>Total</th></tr></thead>
+    <tbody>
+      {% for item in order.items.all %}
+      <tr>
+        <td>{{ item.product_name }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>{{ item.unit_price_ht }} €</td>
+        <td>{{ item.line_total_ht }} €</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="total">
+    Sous-total: {{ order.subtotal }} €<br>
+    TVA: {{ order.tax_amount }} €<br>
+    <span style="color:#16a34a; font-size:18px;">Total TTC: {{ order.total_amount }} €</span>
+  </div>
+</body>
+</html>
