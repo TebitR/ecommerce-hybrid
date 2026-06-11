@@ -6,7 +6,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-fallback")
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+# Autoriser les connexions depuis la machine hôte et l'émulateur
+ALLOWED_HOSTS = os.environ.get(
+    "ALLOWED_HOSTS",
+    "localhost,127.0.0.1,10.0.2.2,django",
+).split(",")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -17,6 +21,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
+    "django_celery_beat",
     # Apps métier
     "apps.accounts",
     "apps.catalog",
@@ -94,8 +99,32 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ==================== CORS & SIMPLE JWT ====================
-CORS_ALLOW_ALL_ORIGINS = True  # Dev uniquement. Restreindre en prod
+# Configuration des origines autorisées pour le développement avec Flutter
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Autoriser explicitement l'origine de ton serveur de développement Flutter Web
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+]
+
+# Configuration des en-têtes requis pour les échanges de tokens JWT
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
+# Permet à Chrome de transmettre les cookies et les en-têtes d'authentification
 CORS_ALLOW_CREDENTIALS = True
+
+# Si tu as un middleware de sécurité strict (SECURE_SSL_REDIRECT), assure-toi qu'il est à False en DEV
+SECURE_SSL_REDIRECT = False
 
 # Configuration JWT (SimpleJWT)
 SIMPLE_JWT = {
@@ -123,11 +152,11 @@ SIMPLE_JWT = {
     "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
 }
 
-# Email Backend (Dev: Console | Prod: SMTP/Mailtrap)
-EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "1025"))
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "False").lower() == "true"
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@eshop.local")
+# Email Backend — lit le .env (SMTP Gmail en prod/dev)
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)

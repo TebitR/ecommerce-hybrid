@@ -1,35 +1,23 @@
-import logging
-
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-
-from .models import Product
-from .tasks import sync_product_to_mongo
-
-logger = logging.getLogger(__name__)
+from apps.catalog.models import Product
+from apps.catalog.tasks import sync_product_to_mongo, delete_product_from_mongo
 
 
 @receiver(post_save, sender=Product)
-def on_product_saved(sender, instance, created, **kwargs):
-    """
-    Déclenche la synchro MongoDB quand un produit est créé ou modifié.
-    Utilise .delay() pour exécuter la tâche de façon asynchrone.
-    """
-    if instance.is_active:  # Ne sync que les produits actifs
-        logger.info("Signal post_save pour Product#%s (sku=%s)", instance.id, instance.sku)
-        sync_product_to_mongo.delay(instance.id)
+def auto_sync_mongo_save(sender, instance, created, update_fields=None, **kwargs):
+    """Déclenche l'ajout ou la mise à jour dans MongoDB à la sauvegarde."""
+    if not instance.is_active:
+        delete_product_from_mongo.delay(instance.id)
+        print(f"👻 [SIGNAL] Produit {instance.sku} inactif. Demande de retrait MongoDB.")
     else:
-        logger.info("Produit #%s désactivé → suppression MongoDB planifiée", instance.id)
-        # Optionnel : supprimer de MongoDB quand désactivé
-        # delete_product_from_mongo.delay(instance.id)
+        if created or update_fields is None:
+            sync_product_to_mongo.delay(instance.id)
+            print(f"🔄 [SIGNAL] Synchro/Upsert MongoDB déclenchée pour SKU: {instance.sku}")
 
 
 @receiver(post_delete, sender=Product)
-def on_product_deleted(sender, instance, **kwargs):
-    """
-    Supprime le produit de MongoDB quand il est supprimé de PostgreSQL.
-    """
-    from .tasks import delete_product_from_mongo
-
-    logger.info("Signal post_delete pour Product#%s (sku=%s)", instance.id, instance.sku)
+def auto_sync_mongo_delete(sender, instance, **kwargs):
+    """Supprime automatiquement le produit de MongoDB lorsque supprimé de Postgres."""
     delete_product_from_mongo.delay(instance.id)
+    print(f"🗑️ [SIGNAL] Produit {instance.sku} supprimé de Postgres. Nettoyage MongoDB lancé.")

@@ -5,8 +5,23 @@ django-cors-headers>=4.3
 whitenoise>=6.8
 psycopg2-binary>=2.9
 motor>=3.4
-pymongo>=4.7
+pymongo==4.6.3
+
+# MongoDB ODM (low-level)
+mongoengine==0.27.0
+
+# Django integration (optionnel, selon ton implémentation)
+# django-mongoengine==0.5.3
+
 celery>=5.3
 django-celery-beat>=2.6
 redis>=5.0
 gunicorn>=21.2
+
+# PDF Generation & Image Processing
+xhtml2pdf==0.2.11
+reportlab==3.6.13
+Pillow==9.5.0
+html5lib==1.1
+cssselect2==0.7.0
+tinycss2==1.2.1

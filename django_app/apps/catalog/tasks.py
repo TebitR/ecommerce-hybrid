@@ -29,13 +29,20 @@ def sync_product_to_mongo(self, product_id: int):
         # Récupérer le produit depuis PostgreSQL
         product = Product.objects.select_related("category").get(id=product_id)
 
+        # Sécurisation du slug : si le slug vaut "informatique" ou est générique,
+        # on lui ajoute le SKU pour garantir l'unicité stricte exigée par l'index MongoDB
+        raw_slug = product.category.slug if product.category else None
+        mongo_slug = raw_slug if raw_slug else "product"
+        if mongo_slug == "informatique" or not raw_slug:
+            mongo_slug = f"{mongo_slug}-{product.sku.lower()}"
+
         # Compiler le document MongoDB (format exact du cahier des charges)
-        doc = {
+        product_document = {
             "postgres_id": str(product.id),  # Lien vers PostgreSQL
             "mongo_id": product.mongo_id or None,  # Sera généré si null
             "sku": product.sku,
             "name": product.name,
-            "slug": product.category.slug if product.category else None,
+            "slug": mongo_slug,
             "category": {
                 "id": str(product.category.id) if product.category else None,
                 "name": product.category.name if product.category else None,
@@ -64,9 +71,9 @@ def sync_product_to_mongo(self, product_id: int):
         collection = db["products"]
 
         result = collection.update_one(
-            {"postgres_id": str(product.id)},  # Filtre
-            {"$set": doc},  # Mise à jour
-            upsert=True,  # Créer si n'existe pas
+            {"postgres_id": str(product.id)},
+            {"$set": product_document},
+            upsert=True,
         )
 
         # Mettre à jour mongo_id dans PostgreSQL si généré

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
@@ -16,48 +16,61 @@ export default function Checkout() {
     same_as_shipping: true,
   })
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     const token = localStorage.getItem('jwt_token')
-    if (!token) {
-      setError('Vous devez être connecté pour commander.')
-      setLoading(false)
-      navigate('/login', { state: { from: '/checkout' } })
-      return
-    }
-
     const userId = localStorage.getItem('user_id') || '1'
 
-    // Schéma FastAPI CheckoutRequest : user_id, items, shipping_address_id, billing_address_id
+    // Construction de l'adresse
+    const addressData = {
+      first_name: form.first_name,
+      last_name: form.last_name,
+      street: form.street,
+      city: form.city,
+      zip: form.zip,
+      country: form.country,
+      phone: form.phone
+    }
+
+    // Payload EXACT attendu par Django : postgres_id en NUMBER
     const payload = {
       user_id: userId,
       items: cart.map(item => ({
-        product_postgres_id: parseInt(String(item.postgres_id), 10),
-        quantity: item.quantity,
+        product_postgres_id: Number(item.postgres_id),  // ← Conversion explicite en entier
+        quantity: Number(item.quantity)
       })),
-      shipping_address_id: null as number | null,
-      billing_address_id: null as number | null,
+      shipping_address: addressData,
+      billing_address: form.same_as_shipping ? addressData : { ...addressData }
     }
+
+    console.log('📤 Payload checkout envoyé:', JSON.stringify(payload, null, 2))
 
     try {
       const res = await fetch('http://localhost:8001/api/v2/checkout/confirm', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(payload)
       })
 
+      const data = await res.json()
+      console.log('📥 Réponse checkout:', data)
+
       if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || 'Échec de la commande')
+        throw new Error(data.detail || JSON.stringify(data))
       }
-      const data = (await res.json()) as { order_number?: string }
-      setOrderId(data.order_number ?? '')
+      
+      setOrderId(data.order_number)
       clearCart()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors du paiement. Vérifiez votre panier ou connexion.')
+      
+    } catch (err: any) {
+      console.error('❌ Erreur checkout:', err)
+      setError(err.message || 'Erreur lors de la commande')
     } finally {
       setLoading(false)
     }

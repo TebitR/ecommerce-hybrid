@@ -2,10 +2,9 @@ from django.apps import AppConfig
 
 
 class CatalogConfig(AppConfig):
-    default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.catalog"
-    verbose_name = "Catalogue Produits"
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.catalog'
 
     def ready(self):
-        # Importer les signals pour les enregistrer
-        import apps.catalog.signals  # noqa: F401
+        # Cette ligne est CRUCIALE pour connecter les signaux
+        import apps.catalog.signals

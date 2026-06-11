@@ -1,9 +1,9 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
 export interface CartItem {
   id: string
-  product_id: string // MongoDB ID
-  postgres_id: string // Django ID (checkout)
+  product_id: string      // MongoDB ID (string)
+  postgres_id: number     // Django ID (ENTIER - crucial pour le checkout)
   name: string
   price_ht: string
   price_ttc: string
@@ -12,7 +12,7 @@ export interface CartItem {
 
 interface CartContextType {
   cart: CartItem[]
-  addToCart: (product: Record<string, unknown>, qty?: number) => void
+  addToCart: (product: any, qty?: number) => void
   removeFromCart: (productId: string) => void
   updateQuantity: (productId: string, qty: number) => void
   clearCart: () => void
@@ -25,52 +25,44 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>(() => {
     const saved = localStorage.getItem('cart')
-    if (!saved) return []
-    try {
-      const parsed: unknown = JSON.parse(saved)
-      if (!Array.isArray(parsed)) return []
-      return parsed.map((row: Record<string, unknown>) => ({
-        ...row,
-        postgres_id: String(row.postgres_id ?? row.product_id ?? ''),
-      })) as CartItem[]
-    } catch {
-      return []
-    }
+    return saved ? JSON.parse(saved) : []
   })
 
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(cart))
   }, [cart])
 
-  const addToCart = (product: Record<string, unknown>, qty = 1) => {
-    const pid = String(product.id ?? '')
-    const pgId = product.postgres_id != null ? String(product.postgres_id) : '1'
+  const addToCart = (product: any, qty = 1) => {
     setCart(prev => {
-      const existing = prev.find(i => i.product_id === pid)
+      const existing = prev.find(i => i.product_id === product.id)
       if (existing) {
-        return prev.map(i => i.product_id === pid ? { ...i, quantity: i.quantity + qty } : i)
+        return prev.map(i => i.product_id === product.id ? { ...i, quantity: i.quantity + qty } : i)
       }
-      return [...prev, {
-        id: Date.now().toString(),
-        product_id: pid,
-        postgres_id: pgId,
-        name: String(product.name ?? ''),
-        price_ht: String(product.price_ht ?? ''),
-        price_ttc: String(product.price_ttc ?? ''),
-        quantity: qty,
+      // Conversion EXPLICITE en number pour postgres_id
+      const pgId = product.postgres_id !== undefined ? Number(product.postgres_id) : 1
+      return [...prev, { 
+        id: Date.now().toString(), 
+        product_id: product.id, 
+        postgres_id: pgId,  // ← ENTIER garanti
+        name: product.name, 
+        price_ht: product.price_ht, 
+        price_ttc: product.price_ttc, 
+        quantity: qty 
       }]
     })
   }
 
   const removeFromCart = (productId: string) => setCart(prev => prev.filter(i => i.product_id !== productId))
+  
   const updateQuantity = (productId: string, qty: number) => {
     if (qty <= 0) return removeFromCart(productId)
     setCart(prev => prev.map(i => i.product_id === productId ? { ...i, quantity: qty } : i))
   }
+  
   const clearCart = () => setCart([])
 
   const totalItems = cart.reduce((s, i) => s + i.quantity, 0)
-  const totalTTC = cart.reduce((s, i) => s + (parseFloat(i.price_ttc) || 0) * i.quantity, 0)
+  const totalTTC = cart.reduce((s, i) => s + parseFloat(i.price_ttc) * i.quantity, 0)
 
   return (
     <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, totalItems, totalTTC }}>
@@ -81,6 +73,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 export const useCart = () => {
   const ctx = useContext(CartContext)
-  if (!ctx) throw new Error('useCart doit être utilisé dans <CartProvider>')
+  if (!ctx) throw new Error('useCart must be used within CartProvider')
   return ctx
 }
