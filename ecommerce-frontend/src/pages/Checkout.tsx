@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { API_BASE } from '../config/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
@@ -49,7 +50,7 @@ export default function Checkout() {
     console.log('📤 Payload checkout envoyé:', JSON.stringify(payload, null, 2))
 
     try {
-      const res = await fetch('http://localhost:8001/api/v2/checkout/confirm', {
+      const res = await fetch(`${API_BASE}/checkout/confirm`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json', 

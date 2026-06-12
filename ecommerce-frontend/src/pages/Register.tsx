@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DJANGO_API } from '../config/api'
 import { Link, useNavigate } from 'react-router-dom'
 
 export default function Register() {
@@ -33,7 +34,7 @@ export default function Register() {
     })
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/users/register/', {
+      const response = await fetch(`${DJANGO_API}/users/register/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

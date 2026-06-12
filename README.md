@@ -1,413 +1,417 @@
-# 🛒 Plateforme E-Commerce Hybride
+# Plateforme E-Commerce Hybride
 
-> **Architecture hybride haute performance** : Django + FastAPI | PostgreSQL + MongoDB | Docker & Celery
+> **Architecture hybride** : Django + FastAPI + PostgreSQL + MongoDB + React + Flutter | Docker & Celery
 
 [![Docker](https://img.shields.io/badge/Docker-24.0+-blue.svg)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.12-yellow.svg)](https://www.python.org/)
 [![Django](https://img.shields.io/badge/Django-5.x-green.svg)](https://www.djangoproject.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-cyan.svg)](https://fastapi.tiangolo.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg)](https://www.postgresql.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-7.0-green.svg)](https://www.mongodb.com/)
+[![Flutter](https://img.shields.io/badge/Flutter-3.12+-blue.svg)](https://flutter.dev/)
 
 ---
 
-## 📋 Table des Matières
+## Table des matières
 
-- [🎯 Vue d'Ensemble](#-vue-densemble)
-- [🏗️ Architecture](#️-architecture)
-- [🚀 Démarrage Rapide](#-démarrage-rapide)
-- [📁 Structure du Projet](#-structure-du-projet)
-- [⚙️ Variables d'Environnement](#️-variables-denvironnement)
-- [🐳 Commandes Docker Utiles](#-commandes-docker-utiles)
-- [👥 Guide Collaborateur](#-guide-collaborateur) ⭐
-- [🔐 Sécurité & Bonnes Pratiques](#-sécurité--bonnes-pratiques)
-- [🤝 Contributing](#-contributing)
-- [📄 Licence](#-licence)
+- [Vue d'ensemble](#vue-densemble)
+- [Architecture](#architecture)
+- [Clients (Web & Mobile)](#clients-web--mobile)
+- [Démarrage rapide](#démarrage-rapide)
+- [Configuration réseau & adresse IP](#configuration-réseau--adresse-ip)
+- [Structure du projet](#structure-du-projet)
+- [Variables d'environnement](#variables-denvironnement)
+- [Commandes Docker utiles](#commandes-docker-utiles)
+- [Flux métier principaux](#flux-métier-principaux)
+- [Dépannage](#dépannage)
+- [Sécurité](#sécurité)
+- [Contributing](#contributing)
 
 ---
 
-## 🎯 Vue d'Ensemble
+## Vue d'ensemble
 
-Ce projet est une **plateforme e-commerce à architecture hybride** qui sépare intelligemment les responsabilités entre deux écosystèmes complémentaires :
+Plateforme e-commerce B2C avec **séparation des responsabilités** entre un backend transactionnel (Django/PostgreSQL) et une API catalogue haute performance (FastAPI/MongoDB).
 
 | Couche | Technologie | Rôle |
 |--------|-------------|------|
-| 🔷 **Core Backend** | Django 5.x | Administration, sécurité, logique financière, garanties ACID |
-| ⚡ **High Perf API** | FastAPI | Endpoints publics asynchrones, catalogue client, Swagger auto |
-| 🗄️ **Base Relationnelle** | PostgreSQL 15 | Utilisateurs, commandes, factures, stocks (intégrité stricte) |
-| 📦 **Base Documentaire** | MongoDB 7 | Fiches produits polymorphes, lecture ultra-rapide (<100ms) |
-| 🔴 **Broker / Cache** | Redis 7 | Sessions, cache API, file d'attente Celery |
-| 🔄 **Workers Async** | Celery 5 | Emails, PDF, synchronisation PostgreSQL → MongoDB |
+| Core Backend | Django 5.x | Auth JWT, utilisateurs, commandes ACID, admin, emails Celery |
+| High Perf API | FastAPI | Catalogue MongoDB, recherche, checkout proxy |
+| Base relationnelle | PostgreSQL 15 | Utilisateurs, commandes, stocks, factures |
+| Base documentaire | MongoDB 7 | Fiches produits synchronisées depuis PostgreSQL |
+| Broker / cache | Redis 7 | Celery, cache |
+| Workers async | Celery 5 | Sync catalogue PG→MongoDB, emails PDF de confirmation |
+| Frontend Web | React (Vite) | Boutique, panier, checkout |
+| App Mobile / Web | Flutter | Auth, catalogue, panier, commande, suivi |
 
-### 🌊 Flux de Données (Event-Driven)
+### Flux de données
 
 ```mermaid
 graph LR
     A[Admin Django] -->|Écriture| B(PostgreSQL)
     B -->|Signal post_save| C[Celery Task]
     C -->|Sync| D(MongoDB)
-    D -->|Lecture <100ms| E[Client FastAPI]
-    E -->|Checkout| F[Django Transaction]
+    D -->|Lecture| E[FastAPI]
+    E -->|Checkout JWT| F[Django Order]
     F -->|ACID| B
+    F -->|Email PDF| G[Celery Mail]
 ```
 
-1. **Écriture** : L'admin crée/modifie un produit via Django Admin → PostgreSQL
-2. **Signal** : `post_save` déclenche une tâche Celery via Redis
-3. **Synchronisation** : Celery compile et met à jour le document MongoDB
-4. **Lecture** : Le client consulte le catalogue via FastAPI → MongoDB
-5. **Transaction** : Validation panier → FastAPI → Django → PostgreSQL (ACID)
+1. **Écriture** : produit créé/modifié dans Django Admin → PostgreSQL
+2. **Sync** : Celery met à jour MongoDB (`postgres_id` conservé pour le checkout)
+3. **Lecture** : clients React/Flutter consultent le catalogue via FastAPI
+4. **Achat** : panier → `POST /api/v2/checkout/confirm` → Django crée la commande → Celery envoie l'email
 
 ---
 
-## 🚀 Démarrage Rapide
+## Architecture
+
+| Service | Port hôte | URL locale |
+|---------|-----------|------------|
+| Django API | `8000` | `http://localhost:8000/api/v1/` |
+| FastAPI | `8001` | `http://localhost:8001/api/v2/` |
+| Nginx (optionnel) | `80` | `http://localhost/admin/` |
+| PostgreSQL | `5432` | interne Docker |
+| MongoDB | `27017` | interne Docker |
+| Redis | `6379` | interne Docker |
+
+**Endpoints clés**
+
+| Domaine | Méthode | Endpoint |
+|---------|---------|----------|
+| Login JWT | POST | `/api/v1/auth/login/` |
+| Inscription | POST | `/api/v1/users/register/` |
+| Catalogue | GET | `/api/v2/products/` |
+| Checkout | POST | `/api/v2/checkout/confirm` |
+| Création commande (interne) | POST | `/api/v1/orders/create/` |
+
+---
+
+## Clients (Web & Mobile)
+
+### React (`ecommerce-frontend/`)
+
+- Catalogue FastAPI, panier, checkout, auth Django
+- URLs API centralisées dans `src/App.tsx` (à adapter selon le réseau)
+
+### Flutter (`flutter_app/`)
+
+| Écran | Fichier | Fonction |
+|-------|---------|----------|
+| Connexion | `login_screen.dart` | JWT Django, extraction username depuis email |
+| Inscription | `register_screen.dart` | `POST /users/register/` |
+| Accueil | `home_screen.dart` | Grille produits MongoDB, recherche, catégories |
+| Détail produit | `product_detail_screen.dart` | Fiche produit + ajout panier |
+| Panier | `cart_screen.dart` | Récap, passage commande |
+| Suivi commande | `order_tracking_screen.dart` | Timeline après checkout |
+
+| Service | Fichier | Rôle |
+|---------|---------|------|
+| API HTTP | `api_client.dart` | Base URLs Django + FastAPI, injection JWT |
+| Auth | `auth_service.dart` | Login, register, logout, session sécurisée |
+| Catalogue | `shop_service.dart` | `fetchProducts()` FastAPI |
+| Commande | `order_service.dart` | `createOrder()` → checkout FastAPI |
+
+**Lancer Flutter**
+
+```powershell
+cd flutter_app
+flutter pub get
+flutter run -d chrome          # Web (localhost)
+flutter run                    # Téléphone / émulateur (IP LAN requise)
+```
+
+---
+
+## Démarrage rapide
 
 ### Prérequis
 
 ```powershell
-# Vérifier les versions minimales
 docker --version          # >= 24.0
 docker compose version    # >= 2.20
-git --version             # Requis
+git --version
+# Optionnel : Flutter SDK 3.12+, Node.js 18+ pour le frontend React
 ```
 
-### Installation en 5 minutes
+### Installation
 
 ```powershell
-# 1. Cloner le dépôt
 git clone https://github.com/TebitR/ecommerce-hybrid.git
 cd ecommerce-hybrid
 
-# 2. Configurer les variables d'environnement
 cp .env.example .env
-# ⚠️ Éditer .env et changer TOUS les mots de passe/clés secrètes
+# Éditer .env : mots de passe, ALLOWED_HOSTS, SMTP si emails
 
-# 3. Construire les images (premier lancement)
 docker compose build --no-cache
-
-# 4. Lancer l'infrastructure de base
 docker compose up -d postgres mongodb redis
-Start-Sleep -Seconds 45  # Attendre les healthchecks
+Start-Sleep -Seconds 45
 
-# 5. Appliquer les migrations et créer un superuser
 docker compose run --rm django python manage.py migrate
 docker compose run --rm django python manage.py createsuperuser
 
-# 6. Créer les index MongoDB
-docker compose exec mongodb mongosh -u admin -p ${MONGO_INITDB_ROOT_PASSWORD} ecommerce_catalog --eval "
-  db.products.createIndex({ slug: 1 }, { unique: true });
-  db.products.createIndex({ 'category.id': 1, is_active: 1 });
-  db.products.createIndex({ tags: 1 });
-  db.products.createIndex({ postgres_id: 1 }, { unique: true });
-  print('✅ Index MongoDB créés !');
-"
-
-# 7. Lancer tous les services
 docker compose up -d
 ```
 
 ### Vérification
 
-| Service | URL / Commande | Résultat attendu |
-|---------|---------------|------------------|
-| 🎛️ Django Admin | `http://localhost:80/admin/` | Page de login |
-| 📡 Django API | `http://localhost:80/api/v1/` | JSON API REST |
-| ⚡ FastAPI Docs | `http://localhost:8001/docs` | Swagger interactif |
-| 🗄️ PostgreSQL | `docker compose exec postgres psql -U ecommerce_user -d ecommerce_db -c '\dt'` | Liste des tables |
-| 📦 MongoDB | `docker compose exec mongodb mongosh -u admin --eval 'show dbs'` | Bases MongoDB |
-| 🔴 Redis | `docker compose exec redis redis-cli ping` | `PONG` |
+| Test | URL / commande | Résultat attendu |
+|------|----------------|------------------|
+| Django Admin | `http://localhost:8000/admin/` | Page de login |
+| Django API | `http://localhost:8000/api/v1/` | JSON |
+| FastAPI Docs | `http://localhost:8001/docs` | Swagger |
+| Produits | `http://localhost:8001/api/v2/products/` | Liste JSON |
+| Celery | `docker compose logs -f celery_worker` | Worker actif |
+
+### Frontend React (optionnel)
+
+```powershell
+cd ecommerce-frontend
+npm install
+npm run dev
+# → http://localhost:5173
+```
 
 ---
 
-## 📁 Structure du Projet
+## Configuration réseau & adresse IP
+
+L'adresse IP de votre machine **change selon le réseau** (Wi-Fi maison, partage de connexion, bureau, VPN).  
+Quand vous testez depuis un **téléphone physique** ou un autre appareil sur le LAN, `localhost` ne fonctionne pas : il faut utiliser l'**IP locale de votre PC**.
+
+### Trouver votre IP
+
+```powershell
+# Windows
+ipconfig
+# Repérer "Adresse IPv4" sur Wi-Fi ou Ethernet (ex. 192.168.1.42 ou 172.20.10.4)
+```
+
+### Quelle URL utiliser ?
+
+| Contexte | Django | FastAPI |
+|----------|--------|---------|
+| Chrome Web sur le **même PC** | `http://localhost:8000/api/v1` | `http://localhost:8001/api/v2` |
+| **Émulateur Android** | `http://10.0.2.2:8000/api/v1` | `http://10.0.2.2:8001/api/v2` |
+| **Téléphone physique** (même Wi-Fi) | `http://VOTRE_IP:8000/api/v1` | `http://VOTRE_IP:8001/api/v2` |
+
+> Le PC et le téléphone doivent être sur le **même réseau**. Vérifiez que le pare-feu Windows autorise les ports `8000` et `8001`.
+
+### Fichiers à modifier quand l'IP change
+
+#### Flutter (prioritaire pour l'app mobile)
+
+| Fichier | Constantes à mettre à jour |
+|---------|---------------------------|
+| `flutter_app/lib/core/network/api_client.dart` | `_host` |
+
+Exemple pour IP `192.168.1.117` :
+
+```dart
+static const String _host = '192.168.1.117';
+static const String _djangoBaseUrl = 'http://$_host:8000/api/v1';
+static const String _fastApiBaseUrl = 'http://$_host:8001/api/v2';
+```
+
+#### React Web
+
+| Fichier | Variable |
+|---------|----------|
+| `ecommerce-frontend/src/config/api.ts` | `API_HOST` (un seul fichier à modifier) |
+
+Exemple dans `src/config/api.ts` :
+
+```ts
+export const API_HOST = '192.168.1.117'
+```
+
+#### Backend Django (autoriser les requêtes depuis l'IP)
+
+| Fichier | Action |
+|---------|--------|
+| `.env` | Ajouter votre IP dans `ALLOWED_HOSTS` |
+| `django_app/config/settings/base.py` | Optionnel : ajouter l'origine Flutter Web dans `CORS_ALLOWED_ORIGINS` |
+
+Exemple `.env` :
+
+```env
+ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.42
+```
+
+Après modification du `.env` :
+
+```powershell
+docker compose up -d --force-recreate django celery_worker
+```
+
+> Un simple `docker compose restart` ne recharge pas toujours le fichier `.env`.
+
+#### Fichiers qui n'ont pas besoin d'IP (Docker interne)
+
+Ces chemins utilisent les noms de services Docker (`django`, `mongodb`, `postgres`) et ne dépendent pas de votre IP LAN :
+
+- `docker-compose.yml`
+- `fastapi_app/app/routers/checkout.py` (`http://django:8000/...`)
+- Variables `POSTGRES_HOST`, `MONGODB_URL`, `REDIS_URL` dans `.env`
+
+### Checklist après changement de réseau
+
+1. `ipconfig` → noter la nouvelle IPv4
+2. Mettre à jour `api_client.dart` (Flutter) et/ou `App.tsx` (React)
+3. Ajouter l'IP dans `ALLOWED_HOSTS` (`.env`)
+4. Recréer les conteneurs Django/Celery si `.env` modifié
+5. Hot restart Flutter (`R`) ou relancer `flutter run`
+6. Tester : login → catalogue → panier → commande
+
+---
+
+## Structure du projet
 
 ```
 ecommerce-hybrid/
-├── docker-compose.yml          # Orchestration des 8 services
-├── .env                        # Variables sensibles (NE PAS COMMIT)
-├── .env.example                # Template à committer
-├── .gitignore
-├── README.md                   # Ce fichier
+├── .env / .env.example
+├── docker-compose.yml
+├── README.md
 │
-├── django_app/                 # SERVICE : Core Backend
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── manage.py
-│   ├── config/
-│   │   ├── settings/
-│   │   │   ├── base.py         # Config centrale (DB, Redis, JWT)
-│   │   │   ├── development.py  # Overrides dev (DEBUG=True)
-│   │   │   └── production.py   # Overrides prod (DEBUG=False)
-│   │   ├── urls.py             # Routeur principal
-│   │   └── celery.py           # Initialisation Celery
-│   └── apps/
-│       ├── accounts/           # Auth, UserProfile, Address
-│       ├── catalog/            # Product, Category + sync MongoDB
-│       └── orders/             # Order, Invoice, Payment (ACID)
+├── django_app/                 # Core : auth, users, orders, catalog sync
+│   ├── apps/accounts/          # JWT login
+│   ├── apps/users/             # Register, profil
+│   ├── apps/catalog/           # Produits PG + signals → Celery
+│   └── apps/orders/            # Checkout create, emails PDF Celery
 │
-├── fastapi_app/                # SERVICE : High-Performance API
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py             # App FastAPI + lifespan
-│       ├── config.py           # Settings Pydantic
-│       ├── database.py         # Connexion Motor (MongoDB async)
-│       ├── dependencies.py     # JWT, get_db injections
-│       ├── routers/            # Endpoints API
-│       │   ├── catalog.py      # GET /products, /products/{slug}
-│       │   ├── search.py       # Recherche à facettes
-│       │   ├── cart.py         # CRUD panier temporaire
-│       │   └── reviews.py      # Avis produits
-│       └── schemas/            # Modèles Pydantic de validation
+├── fastapi_app/                # Catalogue MongoDB + checkout proxy
+│   └── app/routers/            # catalog, search, checkout
 │
-└── nginx/                      # SERVICE : Reverse Proxy
-    └── nginx.conf              # Routing /api/v1/ → Django, /api/v2/ → FastAPI
+├── ecommerce-frontend/         # React + Vite (boutique web)
+│   └── src/
+│
+├── flutter_app/                # App mobile / Flutter Web
+│   └── lib/
+│       ├── core/
+│       │   ├── network/api_client.dart
+│       │   ├── services/       # auth, shop, order
+│       │   ├── providers/      # cart
+│       │   └── theme/
+│       └── presentation/screens/
+│
+└── nginx/                      # Reverse proxy (optionnel)
 ```
 
 ---
 
-## ⚙️ Variables d'Environnement
+## Variables d'environnement
 
-Copiez `.env.example` en `.env` et personnalisez :
+Copier `.env.example` vers `.env` :
 
 ```env
-# ==================== DJANGO ====================
-SECRET_KEY=changez-moi-50-caracteres-min
+SECRET_KEY=changez-moi
 DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
+ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.117
 
-# ==================== POSTGRESQL ====================
 POSTGRES_DB=ecommerce_db
 POSTGRES_USER=ecommerce_user
-POSTGRES_PASSWORD=votre-mot-de-passe-secure
+POSTGRES_PASSWORD=...
 
-# ==================== MONGODB ====================
 MONGO_INITDB_ROOT_USERNAME=admin
-MONGO_INITDB_ROOT_PASSWORD=votre-mot-de-passe-secure
-MONGO_INITDB_DATABASE=ecommerce_catalog
+MONGO_INITDB_ROOT_PASSWORD=...
 
-# ==================== REDIS ====================
-REDIS_URL=redis://redis:6379/0
-CELERY_BROKER_URL=redis://redis:6379/1
-
-# ==================== JWT ====================
-JWT_SECRET_KEY=changez-moi-clé-jwt-unique
+JWT_SECRET_KEY=changez-moi-clé-identique-django-et-fastapi
 JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Email (Celery – confirmation de commande)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=votre@gmail.com
+EMAIL_HOST_PASSWORD=mot-de-passe-application
+DEFAULT_FROM_EMAIL=votre@gmail.com
 ```
 
-> ⚠️ **Ne commitez jamais `.env`** — il est déjà dans `.gitignore`.
+> Ne jamais committer `.env` (déjà dans `.gitignore`).
 
 ---
 
-## 🐳 Commandes Docker Utiles
+## Commandes Docker utiles
 
 ```powershell
-# ── Gestion des services ─────────────────────────────
-docker compose up -d                    # Lancer tous les services
-docker compose down                     # Arrêter tous les services
-docker compose down -v                  # Arrêter + supprimer volumes (⚠️ RESET)
-docker compose restart django           # Redémarrer un service
-docker compose ps                       # Voir l'état des services
+docker compose up -d
+docker compose down
+docker compose logs -f django
+docker compose logs -f fastapi
+docker compose logs -f celery_worker
 
-# ── Logs & Debug ────────────────────────────────────
-docker compose logs -f django           # Logs Django en temps réel
-docker compose logs -f fastapi          # Logs FastAPI
-docker compose logs -f celery_worker    # Logs Celery
+docker compose exec django python manage.py migrate
+docker compose exec django python manage.py createsuperuser
 
-# ── Commandes Django ────────────────────────────────
-docker compose exec django python manage.py shell      # Shell interactif
-docker compose exec django python manage.py makemigrations  # Créer migrations
-docker compose exec django python manage.py migrate         # Appliquer migrations
-docker compose exec django python manage.py createsuperuser # Créer admin
-
-# ── Monitoring ──────────────────────────────────────
-docker stats                            # Ressources en temps réel
-docker compose exec postgres pg_top     # Monitor PostgreSQL (si installé)
-
-# ── Backup / Restore PostgreSQL ─────────────────────
-docker compose exec postgres pg_dump -U ecommerce_user ecommerce_db > backup.sql
-docker compose exec -T postgres psql -U ecommerce_user ecommerce_db < backup.sql
+# Recharger .env après modification
+docker compose up -d --force-recreate django celery_worker
 ```
 
 ---
 
-## 👥 Guide Collaborateur
+## Flux métier principaux
 
-> 🎯 **Objectif** : Permettre à un nouveau développeur d'avoir un environnement de développement **identique à 100%** en moins de 15 minutes.
+### Authentification
 
-### 📦 Étape 1 : Cloner et Préparer
-
-```powershell
-# 1. Cloner le dépôt
-git clone https://github.com/TebitR/ecommerce-hybrid.git
-cd ecommerce-hybrid
-
-# 2. Vérifier que Docker Desktop est running
-docker info | Select-String "Server Version"
+```
+Client → POST /api/v1/auth/login/ { username, password }
+       ← { access, refresh }
+Token stocké (localStorage React / Secure Storage Flutter)
 ```
 
-### 🔐 Étape 2 : Obtenir le fichier `.env`
+### Checkout (React & Flutter)
 
-Le fichier `.env` contient les secrets et **n'est pas versionné**. Pour l'obtenir :
-
-1. Demander le fichier `.env` au mainteneur via un **canal chiffré** (Signal, Bitwarden, etc.)
-2. Le placer à la racine du projet : `C:\Users\TonNom\ecommerce-hybrid\.env`
-3. Vérifier qu'il est bien ignoré par Git :
-   ```powershell
-   git status | Select-String ".env"  # Aucun résultat = OK
-   ```
-
-### 🐳 Étape 3 : Construire et Lancer
-
-```powershell
-# 1. Construire les images (première fois)
-docker compose build --no-cache
-
-# 2. Lancer l'infrastructure de base
-docker compose up -d postgres mongodb redis
-Start-Sleep -Seconds 45  # Attendre les healthchecks
-
-# 3. Appliquer les migrations
-docker compose run --rm django python manage.py migrate
-
-# 4. Créer VOTRE compte superuser (ne pas utiliser celui du .env)
-docker compose run --rm django python manage.py createsuperuser
-# Suivre les invites : username=votre_nom, email=votre@email, password=****
-
-# 5. Créer les index MongoDB (remplacer le mot de passe par celui du .env)
-docker compose exec mongodb mongosh -u admin -p VOTRE_MDP_MONGO ecommerce_catalog --eval "
-  db.products.createIndex({ slug: 1 }, { unique: true });
-  db.products.createIndex({ 'category.id': 1, is_active: 1 });
-  db.products.createIndex({ tags: 1 });
-  db.products.createIndex({ postgres_id: 1 }, { unique: true });
-  print('✅ Index MongoDB créés !');
-"
-
-# 6. Lancer tous les services
-docker compose up -d
-Start-Sleep -Seconds 20
+```
+Client → POST /api/v2/checkout/confirm
+         Authorization: Bearer <access>
+         { user_id, items: [{ product_postgres_id, quantity }] }
+FastAPI → Django /api/v1/orders/create/
+Django  → Commande PostgreSQL + Celery send_order_confirmation
 ```
 
-### 🧪 Étape 4 : Vérifications
+Le champ **`postgres_id`** dans MongoDB est obligatoire : il lie chaque produit catalogue à l'ID PostgreSQL utilisé au checkout.
 
-| Test | Commande / URL | Résultat attendu |
-|------|---------------|------------------|
-| Admin | `http://localhost:80/admin/` | Login Django → accès dashboard |
-| FastAPI Docs | `http://localhost:8001/docs` | Swagger UI chargé |
-| PostgreSQL | `docker compose exec postgres psql -U ecommerce_user -d ecommerce_db -c '\dt'` | Tables Django listées |
-| MongoDB | `docker compose exec mongodb mongosh -u admin --eval 'db.adminCommand("ping")'` | `{ ok: 1 }` |
-| Redis | `docker compose exec redis redis-cli ping` | `PONG` |
+---
 
-✅ Si tous les tests passent → **Environnement 100% fonctionnel**.
-
-### 🔄 Workflow de Développement
-
-```powershell
-# 1. Créer une branche par fonctionnalité
-git checkout -b feature/ma-nouvelle-fonctionnalite
-
-# 2. Développer et tester localement
-# (les modifications dans django_app/ et fastapi_app/ sont montées en volume)
-
-# 3. Après un `git pull`, reconstruire si besoin
-git pull origin main
-docker compose build --no-cache django fastapi
-docker compose up -d
-
-# 4. Commiter avec la convention Conventional Commits
-git add .
-git commit -m "feat(catalog): add product search by tags"
-git push origin feature/ma-nouvelle-fonctionnalite
-
-# 5. Ouvrir une Pull Request sur GitHub
-```
-
-### 🚨 Dépannage Rapide
+## Dépannage
 
 | Problème | Solution |
 |----------|----------|
-| `Authentication failed` MongoDB | Vérifier que le mot de passe dans `.env` correspond à celui utilisé dans les commandes `mongosh` |
-| `502 Bad Gateway` sur `/admin/` | Django n'a pas fini de démarrer → attendre 30s ou `docker compose restart django` |
-| `.env` apparaît dans `git status` | `git rm --cached .env` puis commit |
-| Port 80 déjà utilisé | Modifier `nginx` dans `docker-compose.yml` : `ports: - '8080:80'` puis accéder via `localhost:8080` |
-| Migrations Django échouent | `docker compose run --rm django python manage.py migrate --run-syncdb` |
+| Timeout Flutter / React sur téléphone | Vérifier IP LAN dans `api_client.dart` / `App.tsx` + même Wi-Fi |
+| `Connection refused` | `docker compose ps` — Django et FastAPI doivent être `Up` |
+| `400` au checkout | Produit sans `postgres_id` → resync Celery ou recréer produit via Django Admin |
+| Email non reçu | Vérifier SMTP dans `.env`, logs `celery_worker` |
+| `.env` ignoré après edit | `docker compose up -d --force-recreate django celery_worker` |
+| Écran rouge Flutter après gros changements | Hot **Restart** (`R`) ou relancer `flutter run` |
+| CORS / 403 Django | Ajouter IP dans `ALLOWED_HOSTS` |
 
 ---
 
-## 🔐 Sécurité & Bonnes Pratiques
+## Sécurité
 
-### Checklist de Sécurité
+- `.env` jamais versionné
+- Mots de passe distincts par service
+- `DEBUG=False` et `ALLOWED_HOSTS` restreints en production
+- JWT partagé Django ↔ FastAPI via `JWT_SECRET_KEY`
+- HTTPS via Nginx en production
 
-- [ ] `.env` **jamais committé** dans Git (déjà dans `.gitignore`)
-- [ ] Mots de passe forts et **différents** pour chaque service
-- [ ] `DEBUG=False` et `ALLOWED_HOSTS` restreints en production
-- [ ] HTTPS activé via Nginx + Let's Encrypt en production
-- [ ] Rotation automatique des JWT activée (`ROTATE_REFRESH_TOKENS: True`)
-- [ ] Backups réguliers PostgreSQL et MongoDB configurés
-- [ ] Images Docker scannées avec `docker scout` ou `trivy`
-- [ ] Principe du moindre privilège appliqué aux utilisateurs DB
+---
 
-### Flux JWT (Authentification Centralisée)
+## Contributing
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Django as Django (Auth)
-    participant FastAPI as FastAPI (API)
-    
-    Client->>Django: POST /api/v1/auth/login/ (credentials)
-    Django->>Django: Valider user + mot de passe
-    Django-->>Client: { access_token, refresh_token }
-    
-    Client->>FastAPI: GET /api/v2/products (Authorization: Bearer <access>)
-    FastAPI->>FastAPI: Vérifier signature JWT (HS256)
-    FastAPI-->>Client: Données produits (si token valide)
-    
-    Client->>Django: POST /api/v1/auth/refresh/ (refresh_token)
-    Django-->>Client: Nouveau { access_token, refresh_token }
+```text
+feat(scope): description courte
+fix(scope): correction
+docs: mise à jour README
 ```
 
----
-
-## 🤝 Contributing
-
-1. Fork le projet
-2. Créer une branche fonctionnalité : `git checkout -b feat/ma-fonctionnalite`
-3. Commiter avec Conventional Commits : `git commit -m 'feat(catalog): add facet search'`
-4. Pousser la branche : `git push origin feat/ma-fonctionnalite`
-5. Ouvrir une Pull Request
-
-### Convention de Commits
-
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer]
-```
-
-| Type | Signification | Exemple |
-|------|--------------|---------|
-| `feat` | Nouvelle fonctionnalité | `feat(auth): add JWT refresh endpoint` |
-| `fix` | Correction de bug | `fix(mongo): handle auth timeout on sync` |
-| `docs` | Documentation | `docs: add collaborator onboarding guide` |
-| `chore` | Tâche technique | `chore: update docker-compose healthchecks` |
-| `refactor` | Refactoring sans changement fonctionnel | `refactor(settings): split base/dev/prod configs` |
+1. Fork → branche `feat/...` → PR
 
 ---
 
-## 📄 Licence
+## Licence
 
-Ce projet est confidentiel et destiné à un usage interne académique/professionnel.  
-Toute reproduction ou distribution sans autorisation écrite est interdite.
-
----
-
-> 🚀 **Prochaine phase** : Authentification JWT + Synchronisation Django → MongoDB  
-> 📅 **Dernière mise à jour** : Avril 2026  
-> 👤 **Mainteneur** : [@TebitR](https://github.com/TebitR)
+Projet à usage interne académique/professionnel. Reproduction interdite sans autorisation.
 
 ---
 
-✨ *Développé avec ❤️ en suivant les bonnes pratiques Docker, Django et FastAPI.*
+> **État actuel** : Auth JWT, inscription, catalogue MongoDB, panier, checkout Django/Celery, app Flutter UI maquette verte, suivi commande  
+> **Dernière mise à jour** : Juin 2026  
+> **Mainteneur** : [@TebitR](https://github.com/TebitR)

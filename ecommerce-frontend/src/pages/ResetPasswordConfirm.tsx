@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { DJANGO_API } from '../config/api'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 export default function ResetPasswordConfirm() {
@@ -22,7 +23,7 @@ export default function ResetPasswordConfirm() {
     }
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:8000/api/v1/users/reset-confirm/', {
+      const res = await fetch(`${DJANGO_API}/users/reset-confirm/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid, token, new_password: password }),

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { DJANGO_API } from '../config/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { Download, Package, User } from 'lucide-react'
 
@@ -28,7 +29,7 @@ export default function Dashboard() {
       navigate('/login')
       return
     }
-    fetch('http://localhost:8000/api/v1/users/orders/', { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${DJANGO_API}/users/orders/`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
         if (res.status === 401) {
           navigate('/login')

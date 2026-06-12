@@ -8,6 +8,7 @@ import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPasswordConfirm from './pages/ResetPasswordConfirm'
+import { API_BASE, AUTH_BASE } from './config/api'
 
 interface Product {
   id: string
@@ -20,9 +21,6 @@ interface Product {
   category?: { name: string }
   rating?: { average: number; count: number }
 }
-
-const API_BASE = 'http://localhost:8001/api/v2'
-const AUTH_BASE = 'http://localhost:8000/api/v1/auth'
 
 function setUserIdFromAccessToken(access: string) {
   try {

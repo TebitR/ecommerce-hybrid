@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { DJANGO_API } from '../config/api'
 import { Link } from 'react-router-dom'
 
 export default function ForgotPassword() {
@@ -11,7 +12,7 @@ export default function ForgotPassword() {
     setLoading(true)
     setMessage('')
     try {
-      const res = await fetch('http://localhost:8000/api/v1/users/reset-request/', {
+      const res = await fetch(`${DJANGO_API}/users/reset-request/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

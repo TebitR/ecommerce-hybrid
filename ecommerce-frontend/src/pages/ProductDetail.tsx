@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { API_BASE } from '../config/api'
 import { useParams, Link } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { Star, CheckCircle, Truck, Shield } from 'lucide-react'
@@ -26,7 +27,7 @@ export default function ProductDetail() {
   useEffect(() => {
     if (!slug) return
     let cancelled = false
-    fetch(`http://localhost:8001/api/v2/products/${encodeURIComponent(slug)}`)
+    fetch(`${API_BASE}/products/${encodeURIComponent(slug)}`)
       .then(res => {
         if (!res.ok) throw new Error('not found')
         return res.json()
