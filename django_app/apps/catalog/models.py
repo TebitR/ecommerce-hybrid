@@ -25,6 +25,7 @@ class Product(models.Model):
     stock_quantity = models.IntegerField(default=0)
     stock_reserved = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    image = models.ImageField(upload_to="products/%Y/%m/", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

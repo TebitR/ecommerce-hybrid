@@ -1,417 +1,508 @@
-# Plateforme E-Commerce Hybride
+# E-Commerce Hybride
 
-> **Architecture hybride** : Django + FastAPI + PostgreSQL + MongoDB + React + Flutter | Docker & Celery
+Plateforme e-commerce B2C full-stack avec architecture **write / read** séparée.
 
-[![Docker](https://img.shields.io/badge/Docker-24.0+-blue.svg)](https://www.docker.com/)
-[![Python](https://img.shields.io/badge/Python-3.12-yellow.svg)](https://www.python.org/)
-[![Django](https://img.shields.io/badge/Django-5.x-green.svg)](https://www.djangoproject.com/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-cyan.svg)](https://fastapi.tiangolo.com/)
-[![Flutter](https://img.shields.io/badge/Flutter-3.12+-blue.svg)](https://flutter.dev/)
+**Django + PostgreSQL** gèrent l’auth JWT, le stock et les commandes ACID.  
+**FastAPI + MongoDB** servent le catalogue et la recherche.  
+**Celery + Redis** synchronisent les données et envoient les emails PDF.  
+Deux clients consomment la même API : **React** (web) et **Flutter** (mobile / web).
+
+Tout le backend tourne avec **Docker Compose** — un collaborateur peut cloner et démarrer en quelques minutes.
+
+[![Docker](https://img.shields.io/badge/Docker-24+-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-5.x-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Flutter](https://img.shields.io/badge/Flutter-3.12+-02569B?logo=flutter&logoColor=white)](https://flutter.dev/)
 
 ---
 
 ## Table des matières
 
-- [Vue d'ensemble](#vue-densemble)
+- [Démarrage collaborateur (5 min)](#démarrage-collaborateur-5-min)
+- [Prérequis](#prérequis)
+- [Vérifier que tout tourne](#vérifier-que-tout-tourne)
+- [Lancer les clients](#lancer-les-clients)
 - [Architecture](#architecture)
-- [Clients (Web & Mobile)](#clients-web--mobile)
-- [Démarrage rapide](#démarrage-rapide)
-- [Configuration réseau & adresse IP](#configuration-réseau--adresse-ip)
-- [Structure du projet](#structure-du-projet)
-- [Variables d'environnement](#variables-denvironnement)
-- [Commandes Docker utiles](#commandes-docker-utiles)
-- [Flux métier principaux](#flux-métier-principaux)
+- [Structure du monorepo](#structure-du-monorepo)
+- [Services & ports](#services--ports)
+- [API essentielles](#api-essentielles)
+- [Variables d’environnement](#variables-denvironnement)
+- [Commandes du quotidien](#commandes-du-quotidien)
+- [Réseau & IP (mobile / LAN)](#réseau--ip-mobile--lan)
+- [Flux métier](#flux-métier)
+- [Contribution](#contribution)
 - [Dépannage](#dépannage)
 - [Sécurité](#sécurité)
-- [Contributing](#contributing)
 
 ---
 
-## Vue d'ensemble
+## Démarrage collaborateur (5 min)
 
-Plateforme e-commerce B2C avec **séparation des responsabilités** entre un backend transactionnel (Django/PostgreSQL) et une API catalogue haute performance (FastAPI/MongoDB).
+Objectif : cloner le repo et avoir toute la stack backend opérationnelle via Docker.
 
-| Couche | Technologie | Rôle |
-|--------|-------------|------|
-| Core Backend | Django 5.x | Auth JWT, utilisateurs, commandes ACID, admin, emails Celery |
-| High Perf API | FastAPI | Catalogue MongoDB, recherche, checkout proxy |
-| Base relationnelle | PostgreSQL 15 | Utilisateurs, commandes, stocks, factures |
-| Base documentaire | MongoDB 7 | Fiches produits synchronisées depuis PostgreSQL |
-| Broker / cache | Redis 7 | Celery, cache |
-| Workers async | Celery 5 | Sync catalogue PG→MongoDB, emails PDF de confirmation |
-| Frontend Web | React (Vite) | Boutique, panier, checkout |
-| App Mobile / Web | Flutter | Auth, catalogue, panier, commande, suivi |
-
-### Flux de données
-
-```mermaid
-graph LR
-    A[Admin Django] -->|Écriture| B(PostgreSQL)
-    B -->|Signal post_save| C[Celery Task]
-    C -->|Sync| D(MongoDB)
-    D -->|Lecture| E[FastAPI]
-    E -->|Checkout JWT| F[Django Order]
-    F -->|ACID| B
-    F -->|Email PDF| G[Celery Mail]
-```
-
-1. **Écriture** : produit créé/modifié dans Django Admin → PostgreSQL
-2. **Sync** : Celery met à jour MongoDB (`postgres_id` conservé pour le checkout)
-3. **Lecture** : clients React/Flutter consultent le catalogue via FastAPI
-4. **Achat** : panier → `POST /api/v2/checkout/confirm` → Django crée la commande → Celery envoie l'email
-
----
-
-## Architecture
-
-| Service | Port hôte | URL locale |
-|---------|-----------|------------|
-| Django API | `8000` | `http://localhost:8000/api/v1/` |
-| FastAPI | `8001` | `http://localhost:8001/api/v2/` |
-| Nginx (optionnel) | `80` | `http://localhost/admin/` |
-| PostgreSQL | `5432` | interne Docker |
-| MongoDB | `27017` | interne Docker |
-| Redis | `6379` | interne Docker |
-
-**Endpoints clés**
-
-| Domaine | Méthode | Endpoint |
-|---------|---------|----------|
-| Login JWT | POST | `/api/v1/auth/login/` |
-| Inscription | POST | `/api/v1/users/register/` |
-| Catalogue | GET | `/api/v2/products/` |
-| Checkout | POST | `/api/v2/checkout/confirm` |
-| Création commande (interne) | POST | `/api/v1/orders/create/` |
-
----
-
-## Clients (Web & Mobile)
-
-### React (`ecommerce-frontend/`)
-
-- Catalogue FastAPI, panier, checkout, auth Django
-- URLs API centralisées dans `src/App.tsx` (à adapter selon le réseau)
-
-### Flutter (`flutter_app/`)
-
-| Écran | Fichier | Fonction |
-|-------|---------|----------|
-| Connexion | `login_screen.dart` | JWT Django, extraction username depuis email |
-| Inscription | `register_screen.dart` | `POST /users/register/` |
-| Accueil | `home_screen.dart` | Grille produits MongoDB, recherche, catégories |
-| Détail produit | `product_detail_screen.dart` | Fiche produit + ajout panier |
-| Panier | `cart_screen.dart` | Récap, passage commande |
-| Suivi commande | `order_tracking_screen.dart` | Timeline après checkout |
-
-| Service | Fichier | Rôle |
-|---------|---------|------|
-| API HTTP | `api_client.dart` | Base URLs Django + FastAPI, injection JWT |
-| Auth | `auth_service.dart` | Login, register, logout, session sécurisée |
-| Catalogue | `shop_service.dart` | `fetchProducts()` FastAPI |
-| Commande | `order_service.dart` | `createOrder()` → checkout FastAPI |
-
-**Lancer Flutter**
-
-```powershell
-cd flutter_app
-flutter pub get
-flutter run -d chrome          # Web (localhost)
-flutter run                    # Téléphone / émulateur (IP LAN requise)
-```
-
----
-
-## Démarrage rapide
-
-### Prérequis
-
-```powershell
-docker --version          # >= 24.0
-docker compose version    # >= 2.20
-git --version
-# Optionnel : Flutter SDK 3.12+, Node.js 18+ pour le frontend React
-```
-
-### Installation
-
-```powershell
+```bash
+# 1. Cloner
 git clone https://github.com/TebitR/ecommerce-hybrid.git
 cd ecommerce-hybrid
 
+# 2. Configurer l’environnement (ne jamais committer .env)
 cp .env.example .env
-# Éditer .env : mots de passe, ALLOWED_HOSTS, SMTP si emails
+# Éditer .env : mots de passe, JWT_SECRET_KEY, ALLOWED_HOSTS, SMTP (optionnel)
 
-docker compose build --no-cache
-docker compose up -d postgres mongodb redis
-Start-Sleep -Seconds 45
+# 3. Construire et démarrer tous les services
+docker compose up -d --build
 
-docker compose run --rm django python manage.py migrate
-docker compose run --rm django python manage.py createsuperuser
-
-docker compose up -d
+# 4. Créer un superuser Django (admin)
+docker compose exec django python manage.py createsuperuser
 ```
 
-### Vérification
+Les migrations Django sont exécutées automatiquement au démarrage du conteneur `django`.
 
-| Test | URL / commande | Résultat attendu |
-|------|----------------|------------------|
-| Django Admin | `http://localhost:8000/admin/` | Page de login |
-| Django API | `http://localhost:8000/api/v1/` | JSON |
-| FastAPI Docs | `http://localhost:8001/docs` | Swagger |
-| Produits | `http://localhost:8001/api/v2/products/` | Liste JSON |
-| Celery | `docker compose logs -f celery_worker` | Worker actif |
+Ensuite ouvre :
 
-### Frontend React (optionnel)
+| Service | URL |
+|---------|-----|
+| Django Admin | http://localhost:8000/admin/ |
+| FastAPI Docs (Swagger) | http://localhost:8001/docs |
+| Catalogue produits | http://localhost:8001/api/v2/products/ |
 
-```powershell
+Tu es prêt à collaborer.
+
+---
+
+## Prérequis
+
+| Outil | Version min. | Obligatoire ? |
+|-------|--------------|---------------|
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 24+ | Oui (backend) |
+| Docker Compose | 2.20+ | Oui (inclus avec Docker Desktop) |
+| Git | 2.x | Oui |
+| [Node.js](https://nodejs.org/) | 18+ | Non (seulement React) |
+| [Flutter SDK](https://flutter.dev/) | 3.12+ | Non (seulement Flutter) |
+
+> Tant que tu touches uniquement au backend, **Docker suffit**.  
+> Installe Node ou Flutter seulement si tu travailles sur un client.
+
+---
+
+## Vérifier que tout tourne
+
+```bash
+docker compose ps
+```
+
+Tous les services doivent être `Up` (ou `healthy` pour postgres / mongodb / redis) :
+
+- `ecommerce_postgres`
+- `ecommerce_mongodb`
+- `ecommerce_redis`
+- `ecommerce_django`
+- `ecommerce_fastapi`
+- `ecommerce_celery`
+- `ecommerce_celery_beat`
+- `ecommerce_nginx`
+
+Tests rapides :
+
+```bash
+# Health FastAPI
+curl http://localhost:8001/health
+
+# Catalogue
+curl http://localhost:8001/api/v2/products/
+
+# Logs si quelque chose coince
+docker compose logs -f django
+docker compose logs -f fastapi
+docker compose logs -f celery_worker
+```
+
+---
+
+## Lancer les clients
+
+Les frontends **ne sont pas** dans Docker Compose : ils tournent en local et appellent les APIs.
+
+### React (boutique web)
+
+```bash
 cd ecommerce-frontend
 npm install
 npm run dev
 # → http://localhost:5173
 ```
 
----
-
-## Configuration réseau & adresse IP
-
-L'adresse IP de votre machine **change selon le réseau** (Wi-Fi maison, partage de connexion, bureau, VPN).  
-Quand vous testez depuis un **téléphone physique** ou un autre appareil sur le LAN, `localhost` ne fonctionne pas : il faut utiliser l'**IP locale de votre PC**.
-
-### Trouver votre IP
-
-```powershell
-# Windows
-ipconfig
-# Repérer "Adresse IPv4" sur Wi-Fi ou Ethernet (ex. 192.168.1.42 ou 172.20.10.4)
-```
-
-### Quelle URL utiliser ?
-
-| Contexte | Django | FastAPI |
-|----------|--------|---------|
-| Chrome Web sur le **même PC** | `http://localhost:8000/api/v1` | `http://localhost:8001/api/v2` |
-| **Émulateur Android** | `http://10.0.2.2:8000/api/v1` | `http://10.0.2.2:8001/api/v2` |
-| **Téléphone physique** (même Wi-Fi) | `http://VOTRE_IP:8000/api/v1` | `http://VOTRE_IP:8001/api/v2` |
-
-> Le PC et le téléphone doivent être sur le **même réseau**. Vérifiez que le pare-feu Windows autorise les ports `8000` et `8001`.
-
-### Fichiers à modifier quand l'IP change
-
-#### Flutter (prioritaire pour l'app mobile)
-
-| Fichier | Constantes à mettre à jour |
-|---------|---------------------------|
-| `flutter_app/lib/core/network/api_client.dart` | `_host` |
-
-Exemple pour IP `192.168.1.117` :
-
-```dart
-static const String _host = '192.168.1.117';
-static const String _djangoBaseUrl = 'http://$_host:8000/api/v1';
-static const String _fastApiBaseUrl = 'http://$_host:8001/api/v2';
-```
-
-#### React Web
-
-| Fichier | Variable |
-|---------|----------|
-| `ecommerce-frontend/src/config/api.ts` | `API_HOST` (un seul fichier à modifier) |
-
-Exemple dans `src/config/api.ts` :
+Config API centralisée : `ecommerce-frontend/src/config/api.ts`  
+Pour tester sur le même PC, tu peux mettre `localhost` :
 
 ```ts
-export const API_HOST = '192.168.1.117'
+export const API_HOST = 'localhost'
 ```
 
-#### Backend Django (autoriser les requêtes depuis l'IP)
+### Flutter (mobile / web)
 
-| Fichier | Action |
-|---------|--------|
-| `.env` | Ajouter votre IP dans `ALLOWED_HOSTS` |
-| `django_app/config/settings/base.py` | Optionnel : ajouter l'origine Flutter Web dans `CORS_ALLOWED_ORIGINS` |
-
-Exemple `.env` :
-
-```env
-ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.42
+```bash
+cd flutter_app
+flutter pub get
+flutter run -d chrome          # Web sur le même PC
+flutter run                    # Téléphone / émulateur
 ```
+
+Config API centralisée : `flutter_app/lib/core/network/api_client.dart`
+
+```dart
+static const String host = 'localhost'; // ou ton IP LAN pour un téléphone
+```
+
+---
+
+## Architecture
+
+Séparation claire des responsabilités :
+
+| Couche | Techno | Rôle |
+|--------|--------|------|
+| Écriture | Django 5 + PostgreSQL 15 | Auth JWT, users, stock, commandes ACID, admin, médias |
+| Lecture | FastAPI + MongoDB 7 | Catalogue, recherche, proxy checkout |
+| Async | Celery 5 + Redis 7 | Sync PG → Mongo, emails PDF |
+| Web | React 19 + Vite + TypeScript + Tailwind | Boutique, panier, checkout |
+| Mobile | Flutter + Dio + Provider | Auth, catalogue, panier, suivi |
+| Proxy | Nginx | `/api/v1` → Django, `/api/v2` → FastAPI |
+
+```mermaid
+flowchart LR
+  Admin[Django Admin] -->|écriture| PG[(PostgreSQL)]
+  PG -->|signal post_save| Celery[Celery]
+  Celery -->|upsert| Mongo[(MongoDB)]
+  Mongo -->|lecture| FastAPI[FastAPI]
+  Clients[React / Flutter] -->|GET catalogue| FastAPI
+  Clients -->|JWT checkout| FastAPI
+  FastAPI -->|httpx| Django[Django Orders]
+  Django -->|ACID + stock| PG
+  Django -->|email PDF| Celery
+```
+
+**En une phrase :** on écrit dans PostgreSQL, on lit dans MongoDB, on commande via JWT, et Celery fait le pont.
+
+---
+
+## Structure du monorepo
+
+```text
+ecommerce-hybrid/
+├── .env.example              # Modèle de config (à copier en .env)
+├── docker-compose.yml        # Stack complète
+├── README.md
+│
+├── django_app/               # Backend transactionnel (écriture)
+│   ├── apps/accounts/        # Login / refresh JWT
+│   ├── apps/users/           # Register, profil, commandes user
+│   ├── apps/catalog/         # Produits PG + sync Celery → Mongo
+│   └── apps/orders/          # Création commande ACID + emails
+│
+├── fastapi_app/              # API catalogue (lecture)
+│   └── app/routers/          # products, search, checkout proxy
+│
+├── ecommerce-frontend/       # Client React (Vite)
+│   └── src/config/api.ts     # ← IP / host API (un seul endroit)
+│
+├── flutter_app/              # Client Flutter
+│   └── lib/core/network/     # ← host API (un seul endroit)
+│
+└── nginx/                    # Reverse proxy (port 80)
+```
+
+---
+
+## Services & ports
+
+| Service | Port hôte | URL utile |
+|---------|-----------|-----------|
+| Django | `8000` | http://localhost:8000/admin/ |
+| FastAPI | `8001` | http://localhost:8001/docs |
+| Nginx | `80` | http://localhost/api/v1/ … |
+| PostgreSQL | `5432` | interne Docker |
+| MongoDB | `27017` | interne Docker |
+| Redis | `6379` | interne Docker |
+| React (local) | `5173` | http://localhost:5173 |
+| Flutter Web | `8080`* | selon `flutter run` |
+
+\* Port Flutter Web variable selon l’environnement.
+
+À l’intérieur de Docker, les services se parlent par **nom** (`django`, `postgres`, `mongodb`, `redis`) — pas besoin d’IP LAN pour ça.
+
+---
+
+## API essentielles
+
+| Action | Méthode | Endpoint | Auth |
+|--------|---------|----------|------|
+| Login | `POST` | `/api/v1/auth/login/` | Non |
+| Refresh token | `POST` | `/api/v1/auth/refresh/` | Non |
+| Inscription | `POST` | `/api/v1/users/register/` | Non |
+| Profil | `GET` | `/api/v1/users/profile/` | JWT |
+| Mes commandes | `GET` | `/api/v1/users/orders/` | JWT |
+| Catalogue | `GET` | `/api/v2/products/` | Non |
+| Recherche | `GET` | `/api/v2/search` | Non |
+| Checkout | `POST` | `/api/v2/checkout/confirm` | JWT |
+
+Docs interactives : **http://localhost:8001/docs**
+
+---
+
+## Variables d’environnement
+
+1. Copie le modèle : `cp .env.example .env`
+2. Remplace tous les `CHANGEZ-MOI`
+3. **Ne commit jamais** `.env` (déjà dans `.gitignore`)
+
+Points critiques :
+
+| Variable | Pourquoi c’est important |
+|----------|--------------------------|
+| `SECRET_KEY` | Sécurité Django |
+| `JWT_SECRET_KEY` | **Doit être identique** pour Django et FastAPI |
+| `ALLOWED_HOSTS` | Ajoute ton IP LAN pour tests mobile |
+| `POSTGRES_*` / `MONGO_*` | Identifiants des bases |
+| `EMAIL_*` | Optionnel — confirmation de commande par mail |
 
 Après modification du `.env` :
 
-```powershell
-docker compose up -d --force-recreate django celery_worker
+```bash
+docker compose up -d --force-recreate django celery_worker fastapi
 ```
 
-> Un simple `docker compose restart` ne recharge pas toujours le fichier `.env`.
-
-#### Fichiers qui n'ont pas besoin d'IP (Docker interne)
-
-Ces chemins utilisent les noms de services Docker (`django`, `mongodb`, `postgres`) et ne dépendent pas de votre IP LAN :
-
-- `docker-compose.yml`
-- `fastapi_app/app/routers/checkout.py` (`http://django:8000/...`)
-- Variables `POSTGRES_HOST`, `MONGODB_URL`, `REDIS_URL` dans `.env`
-
-### Checklist après changement de réseau
-
-1. `ipconfig` → noter la nouvelle IPv4
-2. Mettre à jour `api_client.dart` (Flutter) et/ou `App.tsx` (React)
-3. Ajouter l'IP dans `ALLOWED_HOSTS` (`.env`)
-4. Recréer les conteneurs Django/Celery si `.env` modifié
-5. Hot restart Flutter (`R`) ou relancer `flutter run`
-6. Tester : login → catalogue → panier → commande
+> Un simple `restart` ne recharge pas toujours le fichier `.env`.
 
 ---
 
-## Structure du projet
+## Commandes du quotidien
 
-```
-ecommerce-hybrid/
-├── .env / .env.example
-├── docker-compose.yml
-├── README.md
-│
-├── django_app/                 # Core : auth, users, orders, catalog sync
-│   ├── apps/accounts/          # JWT login
-│   ├── apps/users/             # Register, profil
-│   ├── apps/catalog/           # Produits PG + signals → Celery
-│   └── apps/orders/            # Checkout create, emails PDF Celery
-│
-├── fastapi_app/                # Catalogue MongoDB + checkout proxy
-│   └── app/routers/            # catalog, search, checkout
-│
-├── ecommerce-frontend/         # React + Vite (boutique web)
-│   └── src/
-│
-├── flutter_app/                # App mobile / Flutter Web
-│   └── lib/
-│       ├── core/
-│       │   ├── network/api_client.dart
-│       │   ├── services/       # auth, shop, order
-│       │   ├── providers/      # cart
-│       │   └── theme/
-│       └── presentation/screens/
-│
-└── nginx/                      # Reverse proxy (optionnel)
-```
-
----
-
-## Variables d'environnement
-
-Copier `.env.example` vers `.env` :
-
-```env
-SECRET_KEY=changez-moi
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,192.168.1.117
-
-POSTGRES_DB=ecommerce_db
-POSTGRES_USER=ecommerce_user
-POSTGRES_PASSWORD=...
-
-MONGO_INITDB_ROOT_USERNAME=admin
-MONGO_INITDB_ROOT_PASSWORD=...
-
-JWT_SECRET_KEY=changez-moi-clé-identique-django-et-fastapi
-JWT_ALGORITHM=HS256
-
-# Email (Celery – confirmation de commande)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=votre@gmail.com
-EMAIL_HOST_PASSWORD=mot-de-passe-application
-DEFAULT_FROM_EMAIL=votre@gmail.com
-```
-
-> Ne jamais committer `.env` (déjà dans `.gitignore`).
-
----
-
-## Commandes Docker utiles
-
-```powershell
+```bash
+# Démarrer / arrêter
 docker compose up -d
 docker compose down
+
+# Rebuild après changement Dockerfile / deps
+docker compose up -d --build
+
+# Logs
 docker compose logs -f django
 docker compose logs -f fastapi
 docker compose logs -f celery_worker
 
+# Django
 docker compose exec django python manage.py migrate
 docker compose exec django python manage.py createsuperuser
+docker compose exec django python manage.py sync_catalog_to_mongo
 
-# Recharger .env après modification
-docker compose up -d --force-recreate django celery_worker
+# Shell Django / bash
+docker compose exec django python manage.py shell
+docker compose exec django bash
+```
+
+### Premier produit de démo
+
+1. Va sur http://localhost:8000/admin/
+2. Crée une **catégorie**, puis un **produit** (avec image si tu veux)
+3. Celery synchronise automatiquement vers MongoDB
+4. Vérifie : http://localhost:8001/api/v2/products/
+
+Si besoin de forcer la sync :
+
+```bash
+docker compose exec django python manage.py sync_catalog_to_mongo
 ```
 
 ---
 
-## Flux métier principaux
+## Réseau & IP (mobile / LAN)
 
-### Authentification
+`localhost` fonctionne **uniquement sur la machine qui héberge Docker**.  
+Pour un **téléphone physique**, utilise l’IP LAN de ton PC.
 
+### Trouver ton IP
+
+```powershell
+# Windows
+ipconfig
+# → Adresse IPv4 (ex. 192.168.1.42 ou 172.20.10.4)
 ```
-Client → POST /api/v1/auth/login/ { username, password }
-       ← { access, refresh }
-Token stocké (localStorage React / Secure Storage Flutter)
+
+```bash
+# macOS / Linux
+ip addr   # ou ifconfig
 ```
 
-### Checkout (React & Flutter)
+### Quelle adresse utiliser ?
 
+| Contexte | Host à mettre |
+|----------|---------------|
+| Même PC (Chrome / Flutter Web) | `localhost` |
+| Émulateur Android | `10.0.2.2` |
+| Téléphone réel (même Wi‑Fi) | ton IP LAN |
+
+### Fichiers à mettre à jour (3 endroits max)
+
+| Fichier | Variable |
+|---------|----------|
+| `flutter_app/lib/core/network/api_client.dart` | `host` |
+| `ecommerce-frontend/src/config/api.ts` | `API_HOST` |
+| `.env` → `ALLOWED_HOSTS` | ajoute ton IP, puis recreate Django |
+
+Exemple Flutter :
+
+```dart
+static const String host = '172.20.10.4';
 ```
-Client → POST /api/v2/checkout/confirm
-         Authorization: Bearer <access>
-         { user_id, items: [{ product_postgres_id, quantity }] }
+
+Exemple React :
+
+```ts
+export const API_HOST = '172.20.10.4'
+```
+
+Exemple `.env` :
+
+```env
+ALLOWED_HOSTS=localhost,127.0.0.1,10.0.2.2,django,172.20.10.4
+```
+
+Puis :
+
+```bash
+docker compose up -d --force-recreate django celery_worker
+```
+
+Le PC et le téléphone doivent être sur le **même réseau**. Autorise les ports `8000` et `8001` dans le pare-feu si besoin.
+
+---
+
+## Flux métier
+
+### Auth
+
+```text
+Client  → POST /api/v1/auth/login/  { username, password }
+        ← { access, refresh }
+Stockage : localStorage (React) / flutter_secure_storage (Flutter)
+```
+
+### Catalogue
+
+```text
+Admin Django → PostgreSQL → Celery sync → MongoDB → FastAPI GET /products/
+```
+
+Le champ MongoDB `postgres_id` lie chaque fiche catalogue à l’ID PostgreSQL (indispensable pour le checkout).
+
+### Checkout
+
+```text
+Client  → POST /api/v2/checkout/confirm
+          Authorization: Bearer <access>
+          { items: [{ product_postgres_id, quantity }, ...] }
 FastAPI → Django /api/v1/orders/create/
-Django  → Commande PostgreSQL + Celery send_order_confirmation
+Django  → transaction ACID + réservation stock
+Celery  → email PDF de confirmation
 ```
 
-Le champ **`postgres_id`** dans MongoDB est obligatoire : il lie chaque produit catalogue à l'ID PostgreSQL utilisé au checkout.
+### Images produit
+
+- Upload via Django Admin (`Product.image`)
+- Sync Celery envoie le chemin relatif (`/media/products/...`) dans MongoDB
+- Flutter reconstruit l’URL absolue avec `ApiClient.djangoOrigin`
+
+---
+
+## Contribution
+
+### Branches
+
+```text
+main              # stable
+feat/<sujet>      # nouvelle fonctionnalité
+fix/<sujet>       # correction
+docs/<sujet>      # documentation
+```
+
+### Convention de commits
+
+```text
+feat(catalog): sync image relative vers MongoDB
+fix(orders): corriger réservation de stock
+docs(readme): clarifier onboarding Docker
+chore(docker): monter volume media sur Celery
+```
+
+### Workflow collaboratif
+
+1. `git pull origin main`
+2. Créer une branche `feat/...` ou `fix/...`
+3. Développer / tester avec `docker compose`
+4. Vérifier que `.env` n’est **pas** dans le commit
+5. Ouvrir une Pull Request avec :
+   - résumé du changement
+   - comment tester (URLs / commandes)
+6. Review → merge
+
+### Checklist avant PR
+
+- [ ] `docker compose up -d` démarre sans erreur
+- [ ] Les endpoints touchés répondent
+- [ ] Pas de secrets (`.env`, mots de passe, tokens)
+- [ ] README / docs mis à jour si le workflow change
+- [ ] Message de commit clair
 
 ---
 
 ## Dépannage
 
-| Problème | Solution |
-|----------|----------|
-| Timeout Flutter / React sur téléphone | Vérifier IP LAN dans `api_client.dart` / `App.tsx` + même Wi-Fi |
-| `Connection refused` | `docker compose ps` — Django et FastAPI doivent être `Up` |
-| `400` au checkout | Produit sans `postgres_id` → resync Celery ou recréer produit via Django Admin |
-| Email non reçu | Vérifier SMTP dans `.env`, logs `celery_worker` |
-| `.env` ignoré après edit | `docker compose up -d --force-recreate django celery_worker` |
-| Écran rouge Flutter après gros changements | Hot **Restart** (`R`) ou relancer `flutter run` |
-| CORS / 403 Django | Ajouter IP dans `ALLOWED_HOSTS` |
+| Problème | Cause probable | Solution |
+|----------|----------------|----------|
+| `Connection refused` | Conteneur down | `docker compose ps` puis `docker compose up -d` |
+| Timeout depuis le téléphone | Mauvaise IP / Wi‑Fi | Vérifier `host` / `API_HOST` + même réseau |
+| `400` au checkout | Produit sans `postgres_id` | Recréer le produit via Admin ou `sync_catalog_to_mongo` |
+| Images en 📦 | Pas d’image uploadée / media inaccessible | Uploader une image Admin + ouvrir `http://HOST:8000/media/...` |
+| Email non reçu | SMTP manquant / Celery down | Vérifier `EMAIL_*` + `docker compose logs celery_worker` |
+| `.env` ignoré | Conteneur pas recréé | `docker compose up -d --force-recreate django celery_worker fastapi` |
+| Port déjà utilisé | Conflit local | Arrêter l’autre process ou changer le mapping dans `docker-compose.yml` |
+| Migrations manquantes | Image / volume ancien | `docker compose exec django python manage.py migrate` |
 
 ---
 
 ## Sécurité
 
-- `.env` jamais versionné
-- Mots de passe distincts par service
-- `DEBUG=False` et `ALLOWED_HOSTS` restreints en production
-- JWT partagé Django ↔ FastAPI via `JWT_SECRET_KEY`
-- HTTPS via Nginx en production
+- `.env` **jamais** versionné
+- Mots de passe distincts (Postgres, Mongo, JWT, Django)
+- `JWT_SECRET_KEY` partagé uniquement entre Django et FastAPI
+- En production : `DEBUG=False`, `ALLOWED_HOSTS` restreints, HTTPS derrière Nginx
+- Ne pas committer de dumps DB, tokens, ou fichiers `media/` sensibles
 
 ---
 
-## Contributing
+## État du projet
 
-```text
-feat(scope): description courte
-fix(scope): correction
-docs: mise à jour README
-```
-
-1. Fork → branche `feat/...` → PR
+| Domaine | Statut |
+|---------|--------|
+| Auth JWT / register / reset password | OK |
+| Catalogue MongoDB + sync Celery | OK |
+| Checkout ACID + emails PDF | OK |
+| Clients React + Flutter | OK |
+| Images produit (Admin → Mongo → Flutter) | OK |
+| Paiement Stripe / PayPal | WIP |
+| Panier serveur Mongo | WIP |
+| Hardening prod (HTTPS strict, CORS) | WIP |
 
 ---
 
 ## Licence
 
-Projet à usage interne académique/professionnel. Reproduction interdite sans autorisation.
+Projet académique / portfolio. Usage et reproduction soumis à autorisation du mainteneur.
 
 ---
 
-> **État actuel** : Auth JWT, inscription, catalogue MongoDB, panier, checkout Django/Celery, app Flutter UI maquette verte, suivi commande  
-> **Dernière mise à jour** : Juin 2026  
-> **Mainteneur** : [@TebitR](https://github.com/TebitR)
+**Mainteneur :** [@TebitR](https://github.com/TebitR)  
+**Dernière mise à jour :** Novembre 2026

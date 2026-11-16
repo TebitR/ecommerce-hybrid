@@ -28,6 +28,7 @@ class ProductOut(BaseModel):
     stock_available: int
     is_active: bool
     attributes: dict = Field(default_factory=dict)
+    image: Optional[str] = None
     images: list = Field(default_factory=list)
     rating: dict = Field(default_factory=lambda: {"average": 0.0, "count": 0})
     tags: list = Field(default_factory=list)

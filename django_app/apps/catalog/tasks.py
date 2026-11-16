@@ -17,6 +17,13 @@ def get_mongo_client():
     return MongoClient(mongo_url)
 
 
+def _relative_image_url(product) -> str:
+    """Chemin relatif Django (/media/...) pour MongoDB — Flutter préfixe djangoOrigin."""
+    if not product.image:
+        return ""
+    return product.image.url
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def sync_product_to_mongo(self, product_id: int):
     """
@@ -35,6 +42,8 @@ def sync_product_to_mongo(self, product_id: int):
         mongo_slug = raw_slug if raw_slug else "product"
         if mongo_slug == "informatique" or not raw_slug:
             mongo_slug = f"{mongo_slug}-{product.sku.lower()}"
+
+        image_path = _relative_image_url(product)
 
         # Compiler le document MongoDB (format exact du cahier des charges)
         product_document = {
@@ -58,7 +67,8 @@ def sync_product_to_mongo(self, product_id: int):
             "stock_available": product.stock_quantity - product.stock_reserved,
             "is_active": product.is_active,
             "attributes": {},  # À enrichir plus tard avec JSONField
-            "images": [],  # À enrichir avec un modèle Image
+            "image": image_path,
+            "images": [{"url": image_path, "is_primary": True}] if image_path else [],
             "rating": {"average": 0.0, "count": 0},
             "tags": [],  # À enrichir avec un modèle Tag
             "created_at": product.created_at.isoformat() if product.created_at else None,

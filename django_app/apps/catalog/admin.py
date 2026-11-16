@@ -19,6 +19,20 @@ class ProductAdmin(admin.ModelAdmin):
     list_per_page = 20
     ordering = ("name",)
     readonly_fields = ("created_at", "updated_at")
+    fields = (
+        "sku",
+        "name",
+        "category",
+        "price",
+        "tax_rate",
+        "stock_quantity",
+        "stock_reserved",
+        "is_active",
+        "image",
+        "mongo_id",
+        "created_at",
+        "updated_at",
+    )
 
     # Actions bulk
     actions = ["mark_active", "mark_inactive", "sync_to_mongo"]

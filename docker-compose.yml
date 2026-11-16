@@ -122,6 +122,7 @@ services:
     command: celery -A config worker --loglevel=info --concurrency=4
     volumes:
       - ./django_app:/app
+      - media_volume:/app/media
     networks:
       - ecommerce_network
     depends_on:
